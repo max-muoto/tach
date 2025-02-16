@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use super::error::CheckError;
 use crate::{
     checks::{IgnoreDirectivePostProcessor, InterfaceChecker, InternalDependencyChecker},
-    config::ProjectConfig,
+    config::{ignore::GitignoreCache, ProjectConfig},
     diagnostics::{
         ConfigurationDiagnostic, Diagnostic, DiagnosticDetails, DiagnosticError,
         DiagnosticPipeline, FileChecker, FileProcessor, Result as DiagnosticResult,
@@ -184,60 +184,64 @@ pub fn check(
     .with_dependency_checker(dependency_checker)
     .with_interface_checker(interface_checker);
 
+    let gitignore_cache = GitignoreCache::new(&project_root);
     let diagnostics = source_roots.par_iter().flat_map(|source_root| {
-        fs::walk_pyfiles(&source_root.display().to_string(), &exclusions)
-            .par_bridge()
-            .flat_map(|file_path| {
-                if check_interrupt().is_err() {
-                    // Since files are being processed in parallel,
-                    // this will essentially short-circuit all remaining files.
-                    // Then, we check for an interrupt right after, and return the Err if it is set
-                    return vec![];
-                }
+        fs::walk_pyfiles(
+            &source_root.display().to_string(),
+            &exclusions,
+            &gitignore_cache,
+        )
+        .par_bridge()
+        .flat_map(|file_path| {
+            if check_interrupt().is_err() {
+                // Since files are being processed in parallel,
+                // this will essentially short-circuit all remaining files.
+                // Then, we check for an interrupt right after, and return the Err if it is set
+                return vec![];
+            }
 
-                let project_file =
-                    match ProjectFile::try_new(&project_root, source_root, &file_path) {
-                        Ok(project_file) => project_file,
-                        Err(_) => {
-                            return vec![Diagnostic::new_global_warning(
-                                DiagnosticDetails::Configuration(
-                                    ConfigurationDiagnostic::SkippedFileIoError {
-                                        file_path: file_path.display().to_string(),
-                                    },
-                                ),
-                            )]
-                        }
-                    };
-
-                match pipeline.diagnostics(project_file) {
-                    Ok(diagnostics) => diagnostics,
-                    Err(DiagnosticError::Io(_)) | Err(DiagnosticError::Filesystem(_)) => {
-                        vec![Diagnostic::new_global_warning(
-                            DiagnosticDetails::Configuration(
-                                ConfigurationDiagnostic::SkippedFileIoError {
-                                    file_path: file_path.display().to_string(),
-                                },
-                            ),
-                        )]
-                    }
-                    Err(DiagnosticError::ImportParse(_)) => {
-                        vec![Diagnostic::new_global_warning(
-                            DiagnosticDetails::Configuration(
-                                ConfigurationDiagnostic::SkippedFileSyntaxError {
-                                    file_path: file_path.display().to_string(),
-                                },
-                            ),
-                        )]
-                    }
-                    Err(_) => vec![Diagnostic::new_global_warning(
+            let project_file = match ProjectFile::try_new(&project_root, source_root, &file_path) {
+                Ok(project_file) => project_file,
+                Err(_) => {
+                    return vec![Diagnostic::new_global_warning(
                         DiagnosticDetails::Configuration(
-                            ConfigurationDiagnostic::SkippedUnknownError {
+                            ConfigurationDiagnostic::SkippedFileIoError {
                                 file_path: file_path.display().to_string(),
                             },
                         ),
-                    )],
+                    )]
                 }
-            })
+            };
+
+            match pipeline.diagnostics(project_file) {
+                Ok(diagnostics) => diagnostics,
+                Err(DiagnosticError::Io(_)) | Err(DiagnosticError::Filesystem(_)) => {
+                    vec![Diagnostic::new_global_warning(
+                        DiagnosticDetails::Configuration(
+                            ConfigurationDiagnostic::SkippedFileIoError {
+                                file_path: file_path.display().to_string(),
+                            },
+                        ),
+                    )]
+                }
+                Err(DiagnosticError::ImportParse(_)) => {
+                    vec![Diagnostic::new_global_warning(
+                        DiagnosticDetails::Configuration(
+                            ConfigurationDiagnostic::SkippedFileSyntaxError {
+                                file_path: file_path.display().to_string(),
+                            },
+                        ),
+                    )]
+                }
+                Err(_) => vec![Diagnostic::new_global_warning(
+                    DiagnosticDetails::Configuration(
+                        ConfigurationDiagnostic::SkippedUnknownError {
+                            file_path: file_path.display().to_string(),
+                        },
+                    ),
+                )],
+            }
+        })
     });
 
     if check_interrupt().is_err() {

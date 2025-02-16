@@ -63,6 +63,9 @@ pub struct ProjectConfig {
     pub forbid_circular_dependencies: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     #[pyo3(get, set)]
+    pub respect_gitignore: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    #[pyo3(get, set)]
     pub use_regex_matching: bool,
     #[serde(default, skip_serializing_if = "RootModuleTreatment::is_default")]
     #[pyo3(get)]
@@ -118,6 +121,7 @@ impl Default for ProjectConfig {
             disable_logging: Default::default(),
             include_string_imports: Default::default(),
             forbid_circular_dependencies: Default::default(),
+            respect_gitignore: Default::default(),
             use_regex_matching: Default::default(),
             root_module: Default::default(),
             rules: Default::default(),

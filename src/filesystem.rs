@@ -11,6 +11,7 @@ use itertools::Itertools;
 use thiserror::Error;
 use walkdir::{DirEntry, WalkDir};
 
+use crate::config::ignore::GitignoreCache;
 use crate::config::root_module::ROOT_MODULE_SENTINEL_TAG;
 use crate::config::ModuleConfig;
 use crate::exclusion::PathExclusions;
@@ -251,8 +252,13 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-fn direntry_is_excluded(entry: &DirEntry, exclusions: &PathExclusions) -> bool {
+fn direntry_is_excluded(
+    entry: &DirEntry,
+    exclusions: &PathExclusions,
+    gitignore_cache: &GitignoreCache,
+) -> bool {
     exclusions.is_path_excluded(entry.path())
+        || gitignore_cache.is_ignored(entry.path(), entry.file_type().is_dir())
 }
 
 fn direntry_is_tach_project(entry: &DirEntry) -> bool {
@@ -305,12 +311,15 @@ impl AsRef<Path> for ProjectFile<'_> {
 pub fn walk_pyfiles<'a>(
     root: &str,
     exclusions: &'a PathExclusions,
+    gitignore_cache: &'a GitignoreCache,
 ) -> impl Iterator<Item = PathBuf> + 'a {
     let prefix_root = root.to_string();
     WalkDir::new(root)
         .into_iter()
         .filter_entry(|e| {
-            !is_hidden(e) && !direntry_is_excluded(e, exclusions) && is_pyfile_or_dir(e)
+            !is_hidden(e)
+                && !direntry_is_excluded(e, exclusions, gitignore_cache)
+                && is_pyfile_or_dir(e)
         })
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_file()) // filter_entry would skip dirs if they were excluded earlier
@@ -326,10 +335,15 @@ pub fn walk_pyfiles<'a>(
 pub fn walk_pyprojects<'a>(
     root: &str,
     exclusions: &'a PathExclusions,
+    gitignore_cache: &'a GitignoreCache,
 ) -> impl Iterator<Item = PathBuf> + 'a {
     WalkDir::new(root)
         .into_iter()
-        .filter_entry(|e| !is_hidden(e) && !direntry_is_excluded(e, exclusions))
+        .filter_entry(|e| {
+            !is_hidden(e)
+                && !direntry_is_excluded(e, exclusions, gitignore_cache)
+                && is_pyfile_or_dir(e)
+        })
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_file())
         .filter(|entry| entry.file_name() == "pyproject.toml")

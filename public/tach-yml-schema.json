@@ -119,6 +119,11 @@
       "default": false,
       "description": "Cause `tach check` to fail if any circular dependencies are detected"
     },
+    "respect_gitignore": {
+      "type": "boolean",
+      "default": true,
+      "description": "Exclude files matching files excluded by `.gitignore` or global gitignore files"
+    },
     "use_regex_matching": {
       "type": "boolean",
       "default": true,
