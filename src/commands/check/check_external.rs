@@ -1,5 +1,5 @@
 use crate::checks::{ExternalDependencyChecker, IgnoreDirectivePostProcessor};
-use crate::config::ignore::GitignoreCache;
+use crate::config::ignore::GitignoreMatcher;
 use crate::config::ProjectConfig;
 use crate::dependencies::import::with_distribution_names;
 use crate::diagnostics::{
@@ -116,11 +116,11 @@ pub fn check(
         &project_config.exclude,
         project_config.use_regex_matching,
     )?;
-    let gitignore_cache = GitignoreCache::new(&project_root);
+    let gitignore_matcher = GitignoreMatcher::new(&project_root, !project_config.respect_gitignore);
     let diagnostics = walk_pyprojects(
         project_root.to_string_lossy().as_ref(),
         &exclusions,
-        &gitignore_cache,
+        &gitignore_matcher,
     )
     .par_bridge()
     .flat_map(|pyproject| {
@@ -153,7 +153,7 @@ pub fn check(
                 walk_pyfiles(
                     &source_root.display().to_string(),
                     &exclusions,
-                    &gitignore_cache,
+                    &gitignore_matcher,
                 )
                 .par_bridge()
                 .flat_map(|file_path| {
