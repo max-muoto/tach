@@ -339,11 +339,7 @@ pub fn walk_pyprojects<'a>(
 ) -> impl Iterator<Item = PathBuf> + 'a {
     WalkDir::new(root)
         .into_iter()
-        .filter_entry(|e| {
-            !is_hidden(e)
-                && !direntry_is_excluded(e, exclusions, gitignore_cache)
-                && is_pyfile_or_dir(e)
-        })
+        .filter_entry(|e| !is_hidden(e) && !direntry_is_excluded(e, exclusions, gitignore_cache))
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_file())
         .filter(|entry| entry.file_name() == "pyproject.toml")
